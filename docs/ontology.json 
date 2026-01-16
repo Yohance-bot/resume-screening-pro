@@ -1,0 +1,5 @@
+{
+  "cloud": ["aws", "azure", "gcp", "google cloud"],
+  "ml": ["machine learning", "sklearn", "tensorflow", "pytorch"],
+  "database": ["sql", "mysql", "postgres", "mongodb"]
+}
