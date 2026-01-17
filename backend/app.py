@@ -1,124 +1,34 @@
 from flask import Flask, jsonify, request
-from flask_cors import CORS, cross_origin
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from dotenv import load_dotenv
+from flask_cors import CORS
+from backend.services.rag_resume_pipeline import RAGResumePipeline
 import os
-import json
-import uuid
-import re
-from datetime import datetime
-from typing import Dict, Any
-from fuzzywuzzy import fuzz
-from models import Candidate, JobDescription, JD
-from groq import Groq
-from config.local_config import GROQ_API_KEY
-from services.rag_pipeline import RAGResumePipeline
-from services.chatbot import ChatOrchestrator
-from services.pdf_extractor import extract_pdf_text, extract_docx_text
-from utils.project_matcher import find_matching_project, calculate_project_similarity
-from sqlalchemy import text as sql_text
-from sqlalchemy.orm.attributes import flag_modified
-
-# Import shared extensions
-from extensions import db, migrate, login_manager
-from auth_routes import auth_bp
-from admin_routes import admin_bp
-
-load_dotenv()
 
 app = Flask(__name__)
-CORS(
-    app,
-    supports_credentials=True,
-    origins=["http://localhost:5173", "https://resume-screening-frontend.onrender.com"],
-    allow_headers=["Content-Type"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-)
+CORS(app)
 
-# DB config
-database_url = os.getenv('DATABASE_URL')
-if database_url:
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-else:
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, "resume_screening.db")}'
+@app.route('/')
+def health():
+    return jsonify({"status": "Resume API running!", "timestamp": os.environ.get('PORT', 5000)})
+
+@app.route('/api/test')
+def test():
+    return jsonify({"message": "Backend connected successfully!"})
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:////tmp/resume_screening.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
 
-# Initialize shared extensions
-db.init_app(app)
-migrate.init_app(app, db)
-login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
+# NO extensions/blueprints on startup - add them LATER after deploy works
 
-# Register auth blueprint
-app.register_blueprint(auth_bp)
-app.register_blueprint(admin_bp)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
 
-# Add unauthorized handler to prevent redirects for API routes
-@login_manager.unauthorized_handler
-def unauthorized():
-    # Check if the request is for an API endpoint
-    if request.path.startswith('/api/'):
-        return jsonify({"error": "Unauthorized"}), 401
-    # For non-API routes, return JSON too (avoid redirect loops in SPA setups)
-    return jsonify({"error": "Unauthorized"}), 401
-
-# Create tables and seed admin user
-with app.app_context():
-    db.create_all()
-
-    # Lightweight schema upgrade for SQLite (avoids requiring manual migrations)
-    try:
-        existing_cols = {
-            row[1]
-            for row in db.session.execute(sql_text('PRAGMA table_info(users)')).fetchall()
-        }
-        alter_stmts = []
-        if 'name' not in existing_cols:
-            alter_stmts.append("ALTER TABLE users ADD COLUMN name VARCHAR(120)")
-        if 'email' not in existing_cols:
-            alter_stmts.append("ALTER TABLE users ADD COLUMN email VARCHAR(255)")
-        if 'force_password_change' not in existing_cols:
-            alter_stmts.append(
-                "ALTER TABLE users ADD COLUMN force_password_change BOOLEAN NOT NULL DEFAULT 0"
-            )
-        if 'last_login' not in existing_cols:
-            alter_stmts.append("ALTER TABLE users ADD COLUMN last_login DATETIME")
-
-        for stmt in alter_stmts:
-            db.session.execute(sql_text(stmt))
-        if alter_stmts:
-            db.session.commit()
-    except Exception:
-        # If this fails, app can still run; migrations can be applied later.
-        db.session.rollback()
-    
-    # Create default admin user if not exists
-    from auth_models import User
-    admin = User.query.filter_by(username='happyadmin').first()
-    if not admin:
-        admin = User(username='happyadmin', email='happyadmin@happiestminds.com', name='Happy Admin', role='admin', force_password_change=False)
-        admin.set_password('Smiles@123')
-        db.session.add(admin)
-        db.session.commit()
-        print("✅ Created admin user: happyadmin / Smiles@123")
-    else:
-        # Ensure existing admin has required fields
-        updated = False
-        if not getattr(admin, 'email', None):
-            admin.email = 'happyadmin@happiestminds.com'
-            updated = True
-        if not getattr(admin, 'name', None):
-            admin.name = 'Happy Admin'
-            updated = True
-        if getattr(admin, 'force_password_change', None) is None:
-            admin.force_password_change = False
-            updated = True
-        if updated:
-            db.session.commit()
-        print("ℹ️ Admin user already exists")
+# COMMENT OUT ALL BELOW UNTIL DEPLOY WORKS:
+# db.init_app(app)
+# migrate.init_app(app, db)
+# app.register_blueprint(auth_bp)
+# with app.app_context(): ...
 
 @app.route("/dashboard")
 def dashboard_stats():
