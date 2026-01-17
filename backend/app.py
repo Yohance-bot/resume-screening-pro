@@ -1,45 +1,22 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS, cross_origin
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from dotenv import load_dotenv
+from flask import Flask, jsonify
+from flask_cors import CORS
 import os
-import json
-import uuid
-import re
-from datetime import datetime
-from typing import Dict, Any
-from fuzzywuzzy import fuzz
-from models import Candidate, JobDescription, JD
-from groq import Groq
-from config.local_config import GROQ_API_KEY
-from services.rag_pipeline import RAGResumePipeline
-from services.chatbot import ChatOrchestrator
-from services.pdf_extractor import extract_pdf_text, extract_docx_text
-from utils.project_matcher import find_matching_project, calculate_project_similarity
-from sqlalchemy import text as sql_text
-from sqlalchemy.orm.attributes import flag_modified
-
-# Import shared extensions
-from extensions import db, migrate, login_manager
-from auth_routes import auth_bp
-from admin_routes import admin_bp
-
-load_dotenv()
 
 app = Flask(__name__)
-CORS(
-    app,
-    supports_credentials=True,
-    origins=["http://localhost:5173"],
-    allow_headers=["Content-Type"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-)
-port = int(os.environ.get("PORT", 5000))
+CORS(app)
+
+@app.route('/')
+def health():
+    return jsonify({"status": "Resume API running!", "timestamp": os.environ.get('PORT', 5000)})
+
+@app.route('/api/test')
+def test():
+    return jsonify({"message": "Backend connected successfully!"})
+
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-# DB config
-basedir = os.path.abspath(os.path.dirname(__file__))
+
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, "resume_screening.db")}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
