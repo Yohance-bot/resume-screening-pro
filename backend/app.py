@@ -4,7 +4,13 @@ from backend.services.rag_resume_pipeline import RAGResumePipeline
 import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(
+    app,
+    supports_credentials=True,
+    origins=["http://localhost:5173", "https://resume-screening-frontend.onrender.com", "https://your-vercel-app.vercel.app"],
+    allow_headers=["Content-Type"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+)
 
 @app.route('/')
 def health():
